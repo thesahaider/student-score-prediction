@@ -2,110 +2,114 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, r2_score
 
 st.set_page_config(
-    page_title="Sales Data Analysis Dashboard",
-    page_icon="📊",
+    page_title="Student Score Prediction",
+    page_icon="🎓",
     layout="wide"
 )
 
-st.title("Sales Data Analysis Dashboard")
-st.write("Analyze sales revenue, products, and categories.")
-
-# Load and prepare the data
-df = pd.read_csv("sales.csv")
-df["Date"] = pd.to_datetime(df["Date"])
-df["Revenue"] = df["Quantity"] * df["UnitPrice"]
-df["Month"] = df["Date"].dt.strftime("%Y-%m")
-
-# Sidebar filters
-st.sidebar.header("Filters")
-
-categories = st.sidebar.multiselect(
-    "Select categories",
-    options=sorted(df["Category"].unique()),
-    default=sorted(df["Category"].unique())
+st.title("Student Exam Score Prediction")
+st.write(
+    "Use machine learning to predict an exam score "
+    "based on study hours and previous academic performance."
 )
 
-products = st.sidebar.multiselect(
-    "Select products",
-    options=sorted(df["Product"].unique()),
-    default=sorted(df["Product"].unique())
+# Load the dataset
+df = pd.read_csv("students.csv")
+
+# Select features and target
+X = df[["StudyHours", "PreviousScore"]]
+y = df["ExamScore"]
+
+# Split data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.25, random_state=42
 )
 
-filtered_df = df[
-    df["Category"].isin(categories)
-    & df["Product"].isin(products)
-]
+# Train the model
+model = LinearRegression()
+model.fit(X_train, y_train)
 
-# Key performance indicators
-total_revenue = filtered_df["Revenue"].sum()
-total_units = filtered_df["Quantity"].sum()
-total_orders = len(filtered_df)
+# Evaluate the model
+y_pred = model.predict(X_test)
+mae = mean_absolute_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
 
-top_product = (
-    filtered_df.groupby("Product")["Revenue"].sum().idxmax()
-    if not filtered_df.empty
-    else "No data"
+st.subheader("Model Performance")
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Training Records", len(X_train))
+col2.metric("Mean Absolute Error", f"{mae:.2f} points")
+col3.metric("R² Score", f"{r2:.2f}")
+
+st.caption(
+    "Evaluation uses a held-out test set. "
+    "The dataset is small and fictional, so these metrics "
+    "do not establish real-world predictive accuracy."
 )
-
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric("Total Revenue", f"Rs. {total_revenue:,.0f}")
-col2.metric("Units Sold", f"{total_units:,}")
-col3.metric("Sales Records", f"{total_orders:,}")
-col4.metric("Top Product", top_product)
 
 st.divider()
 
-# Revenue by product
-st.subheader("Revenue by Product")
+# Prediction inputs
+st.subheader("Predict a Student's Exam Score")
 
-if not filtered_df.empty:
-    product_sales = (
-        filtered_df.groupby("Product")["Revenue"]
-        .sum()
-        .sort_values(ascending=False)
+col1, col2 = st.columns(2)
+
+with col1:
+    study_hours = st.slider(
+        "Daily study hours",
+        min_value=0.0,
+        max_value=12.0,
+        value=5.0,
+        step=0.5
     )
 
-    st.bar_chart(product_sales)
-
-    # Revenue by month
-    st.subheader("Monthly Revenue")
-
-    monthly_sales = (
-        filtered_df.groupby("Month")["Revenue"]
-        .sum()
-        .sort_index()
+with col2:
+    previous_score = st.slider(
+        "Previous score",
+        min_value=0,
+        max_value=100,
+        value=70,
+        step=1
     )
 
-    st.line_chart(monthly_sales)
+if st.button("Predict Exam Score", type="primary"):
+    input_data = pd.DataFrame({
+        "StudyHours": [study_hours],
+        "PreviousScore": [previous_score]
+    })
 
-    # Category performance
-    st.subheader("Revenue by Category")
+    prediction = model.predict(input_data)[0]
+    prediction = max(0.0, min(100.0, prediction))
 
-    category_sales = (
-        filtered_df.groupby("Category")["Revenue"]
-        .sum()
-        .sort_values(ascending=False)
-    )
+    st.success(f"Predicted exam score: {prediction:.1f} / 100")
 
-    fig, ax = plt.subplots()
-    category_sales.plot(kind="bar", ax=ax)
-    ax.set_xlabel("Category")
-    ax.set_ylabel("Revenue (PKR)")
-    ax.set_title("Category Revenue Comparison")
-    ax.tick_params(axis="x", rotation=0)
-    fig.tight_layout()
-    st.pyplot(fig)
-    plt.close(fig)
+# Compare actual and predicted scores
+st.subheader("Actual vs. Predicted Scores")
 
-    # Detailed sales table
-    st.subheader("Sales Records")
-    st.dataframe(
-        filtered_df.sort_values("Date", ascending=False),
-        use_container_width=True,
-        hide_index=True
-    )
-else:
-    st.warning("No sales records match your selected filters.")
+results = pd.DataFrame({
+    "Actual Score": y_test.values,
+    "Predicted Score": y_pred
+})
+
+st.dataframe(results.round(2), use_container_width=True)
+
+fig, ax = plt.subplots()
+ax.scatter(y_test, y_pred)
+ax.plot([0, 100], [0, 100], linestyle="--")
+ax.set_xlabel("Actual Exam Score")
+ax.set_ylabel("Predicted Exam Score")
+ax.set_title("Actual vs. Predicted Scores")
+ax.set_xlim(0, 100)
+ax.set_ylim(0, 100)
+fig.tight_layout()
+
+st.pyplot(fig)
+plt.close(fig)
+
+st.subheader("Training Dataset")
+st.dataframe(df, use_container_width=True, hide_index=True)
